@@ -1,0 +1,3161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>ASARTR Dashboard</title>
+
+    <!-- =====================================================
+         AZURE MAPS
+    ====================================================== -->
+
+    <link
+        rel="stylesheet"
+        href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.css"
+    >
+
+    <script
+        src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js">
+    </script>
+
+
+    <style>
+
+        html,
+        body {
+
+            margin: 0;
+            padding: 0;
+
+            width: 100%;
+            height: 100%;
+
+            overflow: hidden;
+
+            font-family: Arial, sans-serif;
+
+        }
+
+
+        #map {
+
+            width: 100%;
+            height: 100%;
+
+        }
+
+
+        /* =================================================
+           TOP CONTROL PANEL
+        ================================================== */
+
+        #controls {
+
+            position: absolute;
+
+            top: 20px;
+            left: 20px;
+            right: 20px;
+
+            z-index: 1000;
+
+            background: rgba(255,255,255,0.96);
+
+            padding: 12px 16px;
+
+            border-radius: 12px;
+
+            box-shadow:
+                0 3px 15px rgba(0,0,0,0.25);
+
+            display: flex;
+
+            align-items: flex-end;
+
+            gap: 12px;
+
+            flex-wrap: wrap;
+
+        }
+
+
+        .control-group {
+
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 5px;
+
+        }
+
+
+        .control-group label {
+
+            font-size: 13px;
+
+            font-weight: bold;
+
+            color: #222;
+
+        }
+
+
+        select {
+
+            width: 260px;
+
+            height: 42px;
+
+            padding: 0 10px;
+
+            border: 1px solid #999;
+
+            border-radius: 6px;
+
+            background: white;
+
+            font-size: 15px;
+
+            cursor: pointer;
+
+        }
+
+
+        button {
+
+            height: 42px;
+
+            padding: 0 17px;
+
+            border: 1px solid #777;
+
+            border-radius: 6px;
+
+            background: white;
+
+            font-size: 14px;
+
+            cursor: pointer;
+
+        }
+
+
+        button:hover {
+
+            background: #eeeeee;
+
+        }
+
+
+        #status {
+
+            height: 42px;
+
+            display: flex;
+
+            align-items: center;
+
+            padding: 0 8px;
+
+            font-size: 14px;
+
+            color: #444;
+
+            min-width: 150px;
+
+        }
+
+
+        /* =================================================
+           POPUP
+        ================================================== */
+
+        .popup-content {
+
+            min-width: 280px;
+
+            max-width: 400px;
+
+            max-height: 350px;
+
+            overflow-y: auto;
+
+            padding: 5px;
+
+        }
+
+
+        .popup-title {
+
+            font-size: 18px;
+
+            font-weight: bold;
+
+            margin-bottom: 10px;
+
+            border-bottom: 1px solid #ddd;
+
+            padding-bottom: 6px;
+
+        }
+
+
+        .popup-row {
+
+            margin: 6px 0;
+
+            font-size: 14px;
+
+        }
+
+
+        .popup-label {
+
+            font-weight: bold;
+
+        }
+
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+<!-- =====================================================
+     MAP
+====================================================== -->
+
+<div id="map"></div>
+
+
+<!-- =====================================================
+     TOP CONTROLS
+====================================================== -->
+
+<div id="controls">
+
+
+    <!-- SECTOR -->
+
+    <div class="control-group">
+
+        <label for="sectorSelect">
+            Sector
+        </label>
+
+        <select id="sectorSelect">
+
+            <option value="">
+                -- All Sectors --
+            </option>
+
+        </select>
+
+    </div>
+
+
+    <!-- SUB-SECTOR -->
+
+    <div class="control-group">
+
+        <label for="subSectorSelect">
+            Sub-Sector
+        </label>
+
+        <select id="subSectorSelect">
+
+            <option value="">
+                -- All Sub-Sectors --
+            </option>
+
+        </select>
+
+    </div>
+
+
+    <!-- BUTTONS -->
+
+    <button id="btnASARTR">
+        ASARTR
+    </button>
+
+
+    <button id="btnSector">
+        Sector
+    </button>
+
+
+    <button id="btnSubSector">
+        Sub-Sector
+    </button>
+
+
+    <button id="btnZoomAll">
+        Zoom All
+    </button>
+
+
+    <button id="btnClear">
+        Clear All
+    </button>
+
+
+    <div id="status">
+        All Areas
+    </div>
+
+
+</div>
+
+
+
+<script>
+
+
+/* =========================================================
+   AZURE MAPS KEY
+========================================================= */
+
+const AZURE_MAPS_KEY =
+    "YOUR_KEY";
+
+
+
+/* =========================================================
+   IMPORTANT:
+   THESE ARE THE ONLY GEOJSON FILENAMES USED
+========================================================= */
+
+const ASARTR_URL =
+    "data/ASARTR.geojson";
+
+const SECTOR_URL =
+    "data/Sector.geojson";
+
+const SUBSECTOR_URL =
+    "data/Subsector.geojson";
+
+
+
+/* =========================================================
+   GLOBAL VARIABLES
+========================================================= */
+
+let map = null;
+
+let popup = null;
+
+let asartrData = null;
+
+let sectorData = null;
+
+let subSectorData = null;
+
+
+
+/* =========================================================
+   DATA SOURCES
+========================================================= */
+
+let asartrSource = null;
+
+let sectorSource = null;
+
+let subSectorSource = null;
+
+let selectedSectorSource = null;
+
+let selectedSubSectorSource = null;
+
+let hoverSource = null;
+
+
+
+/* =========================================================
+   LAYERS
+========================================================= */
+
+let asartrLayer = null;
+
+let sectorFillLayer = null;
+
+let sectorBorderLayer = null;
+
+let subSectorFillLayer = null;
+
+let subSectorBorderLayer = null;
+
+let selectedSectorLayer = null;
+
+let selectedSectorBorderLayer = null;
+
+let selectedSubSectorLayer = null;
+
+let selectedSubSectorBorderLayer = null;
+
+let hoverLayer = null;
+
+
+
+/* =========================================================
+   SELECTION
+========================================================= */
+
+let selectedSectorID = null;
+
+let selectedSubSectorID = null;
+
+
+
+/* =========================================================
+   INITIALIZE MAP
+========================================================= */
+
+map = new atlas.Map(
+
+    "map",
+
+    {
+
+        center: [
+            102.65,
+            4.25
+        ],
+
+        zoom: 8,
+
+        view: "Auto",
+
+        authOptions: {
+
+            authType:
+                "subscriptionKey",
+
+            subscriptionKey:
+                AZURE_MAPS_KEY
+
+        }
+
+    }
+
+);
+
+
+
+/* =========================================================
+   MAP READY
+========================================================= */
+
+map.events.add(
+
+    "ready",
+
+    async function () {
+
+        console.log(
+            "Azure Maps READY"
+        );
+
+
+        /* =================================================
+           POPUP
+        ================================================== */
+
+        popup =
+            new atlas.Popup({
+
+                pixelOffset:
+                    [0, -18],
+
+                closeButton:
+                    true
+
+            });
+
+
+
+        /* =================================================
+           CREATE SOURCES
+        ================================================== */
+
+        asartrSource =
+            new atlas.source.DataSource(
+                "asartrSource"
+            );
+
+
+        sectorSource =
+            new atlas.source.DataSource(
+                "sectorSource"
+            );
+
+
+        subSectorSource =
+            new atlas.source.DataSource(
+                "subSectorSource"
+            );
+
+
+        selectedSectorSource =
+            new atlas.source.DataSource(
+                "selectedSectorSource"
+            );
+
+
+        selectedSubSectorSource =
+            new atlas.source.DataSource(
+                "selectedSubSectorSource"
+            );
+
+
+        hoverSource =
+            new atlas.source.DataSource(
+                "hoverSource"
+            );
+
+
+        map.sources.add(
+            asartrSource
+        );
+
+        map.sources.add(
+            sectorSource
+        );
+
+        map.sources.add(
+            subSectorSource
+        );
+
+        map.sources.add(
+            selectedSectorSource
+        );
+
+        map.sources.add(
+            selectedSubSectorSource
+        );
+
+        map.sources.add(
+            hoverSource
+        );
+
+
+
+        /* =================================================
+           LOAD DATA
+        ================================================== */
+
+        try {
+
+            console.log(
+                "Loading ASARTR..."
+            );
+
+            asartrData =
+                await loadGeoJSON(
+                    ASARTR_URL
+                );
+
+            console.log(
+                "ASARTR loaded:",
+                asartrData.features?.length
+            );
+
+
+            console.log(
+                "Loading Sector..."
+            );
+
+            sectorData =
+                await loadGeoJSON(
+                    SECTOR_URL
+                );
+
+            console.log(
+                "Sector loaded:",
+                sectorData.features?.length
+            );
+
+
+            console.log(
+                "Loading Sub-Sector..."
+            );
+
+            subSectorData =
+                await loadGeoJSON(
+                    SUBSECTOR_URL
+                );
+
+            console.log(
+                "Sub-Sector loaded:",
+                subSectorData.features?.length
+            );
+
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "DATA LOAD ERROR:",
+                error
+            );
+
+            showDataError(error);
+
+            return;
+
+        }
+
+
+
+        /* =================================================
+           ADD DATA
+        ================================================== */
+
+        addData(
+            asartrSource,
+            asartrData
+        );
+
+
+        addData(
+            sectorSource,
+            sectorData
+        );
+
+
+        addData(
+            subSectorSource,
+            subSectorData
+        );
+
+
+
+        /* =================================================
+           CREATE LAYERS
+        ================================================== */
+
+        createLayers();
+
+
+
+        /* =================================================
+           CREATE DROPDOWNS
+        ================================================== */
+
+        populateSectorDropdown();
+
+        populateSubSectorDropdown();
+
+
+
+        /* =================================================
+           EVENTS
+        ================================================== */
+
+        setupEvents();
+
+
+
+        /* =================================================
+           INITIAL MAP
+        ================================================== */
+
+        showDefaultMap();
+
+        zoomAll();
+
+
+
+        console.log(
+            "Application ready"
+        );
+
+    }
+
+);
+
+
+
+/* =========================================================
+   LOAD GEOJSON
+========================================================= */
+
+async function loadGeoJSON(url) {
+
+    const response =
+        await fetch(url);
+
+    if (!response.ok) {
+
+        throw new Error(
+            url +
+            " -> HTTP " +
+            response.status
+        );
+
+    }
+
+    const data =
+        await response.json();
+
+
+    if (
+        !data ||
+        data.type !== "FeatureCollection"
+    ) {
+
+        throw new Error(
+            url +
+            " is not a valid GeoJSON FeatureCollection."
+        );
+
+    }
+
+
+    return data;
+
+}
+
+
+
+/* =========================================================
+   DATA ERROR
+========================================================= */
+
+function showDataError(error) {
+
+    const status =
+        document.getElementById(
+            "status"
+        );
+
+    status.textContent =
+        "Data loading error";
+
+
+    console.error(
+        "DATA LOAD ERROR:",
+        error
+    );
+
+}
+
+
+
+/* =========================================================
+   ADD DATA
+========================================================= */
+
+function addData(
+    source,
+    geojson
+) {
+
+    source.clear();
+
+    if (
+        geojson &&
+        geojson.type ===
+        "FeatureCollection"
+    ) {
+
+        source.add(
+            geojson.features
+        );
+
+    }
+
+    else {
+
+        source.add(
+            geojson
+        );
+
+    }
+
+}
+
+
+
+/* =========================================================
+   CREATE LAYERS
+========================================================= */
+
+function createLayers() {
+
+
+    /* =====================================================
+       ASARTR
+    ====================================================== */
+
+    asartrLayer =
+        new atlas.layer.LineLayer(
+
+            asartrSource,
+
+            "asartrLayer",
+
+            {
+
+                strokeColor:
+                    "#000000",
+
+                strokeWidth:
+                    3
+
+            }
+
+        );
+
+
+    map.layers.add(
+        asartrLayer
+    );
+
+
+
+    /* =====================================================
+       SECTOR FILL
+    ====================================================== */
+
+    sectorFillLayer =
+        new atlas.layer.PolygonLayer(
+
+            sectorSource,
+
+            "sectorFillLayer",
+
+            {
+
+                fillColor:
+                    "rgba(150,180,160,0.30)"
+
+            }
+
+        );
+
+
+    map.layers.add(
+        sectorFillLayer
+    );
+
+
+
+    /* =====================================================
+       SECTOR BORDER
+    ====================================================== */
+
+    sectorBorderLayer =
+        new atlas.layer.LineLayer(
+
+            sectorSource,
+
+            "sectorBorderLayer",
+
+            {
+
+                strokeColor:
+                    "#222222",
+
+                strokeWidth:
+                    2
+
+            }
+
+        );
+
+
+    map.layers.add(
+        sectorBorderLayer
+    );
+
+
+
+    /* =====================================================
+       SUB-SECTOR FILL
+    ====================================================== */
+
+    subSectorFillLayer =
+        new atlas.layer.PolygonLayer(
+
+            subSectorSource,
+
+            "subSectorFillLayer",
+
+            {
+
+                fillColor:
+                    "rgba(160,190,180,0.18)"
+
+            }
+
+        );
+
+
+    map.layers.add(
+        subSectorFillLayer
+    );
+
+
+
+    /* =====================================================
+       SUB-SECTOR BORDER
+    ====================================================== */
+
+    subSectorBorderLayer =
+        new atlas.layer.LineLayer(
+
+            subSectorSource,
+
+            "subSectorBorderLayer",
+
+            {
+
+                strokeColor:
+                    "#FFFFFF",
+
+                strokeWidth:
+                    1.5
+
+            }
+
+        );
+
+
+    map.layers.add(
+        subSectorBorderLayer
+    );
+
+
+
+    /* =====================================================
+       SELECTED SECTOR FILL
+    ====================================================== */
+
+    selectedSectorLayer =
+        new atlas.layer.PolygonLayer(
+
+            selectedSectorSource,
+
+            "selectedSectorLayer",
+
+            {
+
+                fillColor:
+                    "rgba(220,210,120,0.45)"
+
+            }
+
+        );
+
+
+    map.layers.add(
+        selectedSectorLayer
+    );
+
+
+
+    /* =====================================================
+       SELECTED SECTOR BORDER
+    ====================================================== */
+
+    selectedSectorBorderLayer =
+        new atlas.layer.LineLayer(
+
+            selectedSectorSource,
+
+            "selectedSectorBorderLayer",
+
+            {
+
+                strokeColor:
+                    "#000000",
+
+                strokeWidth:
+                    4
+
+            }
+
+        );
+
+
+    map.layers.add(
+        selectedSectorBorderLayer
+    );
+
+
+
+    /* =====================================================
+       SELECTED SUB-SECTOR FILL
+    ====================================================== */
+
+    selectedSubSectorLayer =
+        new atlas.layer.PolygonLayer(
+
+            selectedSubSectorSource,
+
+            "selectedSubSectorLayer",
+
+            {
+
+                fillColor:
+                    "rgba(0,220,220,0.35)"
+
+            }
+
+        );
+
+
+    map.layers.add(
+        selectedSubSectorLayer
+    );
+
+
+
+    /* =====================================================
+       SELECTED SUB-SECTOR HALO
+    ====================================================== */
+
+    selectedSubSectorBorderLayer =
+        new atlas.layer.LineLayer(
+
+            selectedSubSectorSource,
+
+            "selectedSubSectorBorderLayer",
+
+            {
+
+                strokeColor:
+                    "#00FFFF",
+
+                strokeWidth:
+                    7,
+
+                lineJoin:
+                    "round",
+
+                lineCap:
+                    "round"
+
+            }
+
+        );
+
+
+    map.layers.add(
+        selectedSubSectorBorderLayer
+    );
+
+
+
+    /* =====================================================
+       HOVER
+    ====================================================== */
+
+    hoverLayer =
+        new atlas.layer.LineLayer(
+
+            hoverSource,
+
+            "hoverLayer",
+
+            {
+
+                strokeColor:
+                    "#00FFFF",
+
+                strokeWidth:
+                    5
+
+            }
+
+        );
+
+
+    map.layers.add(
+        hoverLayer
+    );
+
+
+
+    /* =====================================================
+       MAP CLICK EVENTS
+
+       IMPORTANT:
+       We register events after the layer objects
+       have been created.
+    ====================================================== */
+
+    map.events.add(
+        "click",
+        sectorFillLayer,
+        sectorClicked
+    );
+
+
+    map.events.add(
+        "click",
+        subSectorFillLayer,
+        subSectorClicked
+    );
+
+
+
+    /* =====================================================
+       HOVER
+    ====================================================== */
+
+    map.events.add(
+        "mousemove",
+        sectorFillLayer,
+        sectorMouseMove
+    );
+
+
+    map.events.add(
+        "mousemove",
+        subSectorFillLayer,
+        subSectorMouseMove
+    );
+
+
+    map.events.add(
+        "mouseleave",
+        sectorFillLayer,
+        clearHover
+    );
+
+
+    map.events.add(
+        "mouseleave",
+        subSectorFillLayer,
+        clearHover
+    );
+
+}
+
+
+
+/* =========================================================
+   SAFE FEATURE PROPERTIES
+
+   This fixes the previous:
+
+   shape.getProperties is not a function
+
+========================================================= */
+
+function getFeatureProperties(
+    shape
+) {
+
+    if (!shape) {
+
+        return {};
+
+    }
+
+
+    /* Azure Maps Shape */
+
+    if (
+        typeof shape.getProperties ===
+        "function"
+    ) {
+
+        return (
+            shape.getProperties() ||
+            {}
+        );
+
+    }
+
+
+    /* GeoJSON Feature */
+
+    if (
+        shape.properties
+    ) {
+
+        return (
+            shape.properties ||
+            {}
+        );
+
+    }
+
+
+    return {};
+
+}
+
+
+
+/* =========================================================
+   SECTOR DROPDOWN
+========================================================= */
+
+function populateSectorDropdown() {
+
+    const select =
+        document.getElementById(
+            "sectorSelect"
+        );
+
+
+    select.innerHTML = "";
+
+
+    const first =
+        document.createElement(
+            "option"
+        );
+
+
+    first.value = "";
+
+    first.textContent =
+        "-- All Sectors --";
+
+
+    select.appendChild(
+        first
+    );
+
+
+    const sectors = [];
+
+
+
+    if (
+        !sectorData ||
+        !sectorData.features
+    ) {
+
+        return;
+
+    }
+
+
+
+    sectorData.features.forEach(
+
+        function (feature) {
+
+            const p =
+                feature.properties || {};
+
+
+            const sectorID =
+                p.SectorID !== undefined &&
+                p.SectorID !== null
+                    ?
+                    String(p.SectorID)
+                    :
+                    "";
+
+
+            const sectorName =
+                p.Sector !== undefined &&
+                p.Sector !== null
+                    ?
+                    String(p.Sector)
+                    :
+                    "";
+
+
+            if (
+                sectorID &&
+                sectorName
+            ) {
+
+                const exists =
+                    sectors.some(
+
+                        x =>
+                            x.id ===
+                            sectorID
+
+                    );
+
+
+                if (!exists) {
+
+                    sectors.push({
+
+                        id:
+                            sectorID,
+
+                        name:
+                            sectorName
+
+                    });
+
+                }
+
+            }
+
+        }
+
+    );
+
+
+
+    sectors.sort(
+
+        (a, b) =>
+            a.name.localeCompare(
+                b.name
+            )
+
+    );
+
+
+
+    sectors.forEach(
+
+        function (sector) {
+
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+
+            option.value =
+                sector.id;
+
+
+            option.textContent =
+                sector.name;
+
+
+            select.appendChild(
+                option
+            );
+
+        }
+
+    );
+
+
+    console.log(
+        "Sector dropdown:",
+        sectors.length
+    );
+
+}
+
+
+
+/* =========================================================
+   SUB-SECTOR DROPDOWN
+
+   IMPORTANT:
+
+   If sectorID is empty:
+       SHOW ALL SUB-SECTORS
+
+   If sectorID exists:
+       SHOW ONLY THAT SECTOR'S SUB-SECTORS
+========================================================= */
+
+function populateSubSectorDropdown(
+    sectorID = ""
+) {
+
+    const select =
+        document.getElementById(
+            "subSectorSelect"
+        );
+
+
+    select.innerHTML = "";
+
+
+    const first =
+        document.createElement(
+            "option"
+        );
+
+
+    first.value = "";
+
+    first.textContent =
+        "-- All Sub-Sectors --";
+
+
+    select.appendChild(
+        first
+    );
+
+
+    const subSectors = [];
+
+
+
+    if (
+        !subSectorData ||
+        !subSectorData.features
+    ) {
+
+        return;
+
+    }
+
+
+
+    subSectorData.features.forEach(
+
+        function (feature) {
+
+            const p =
+                feature.properties || {};
+
+
+            const thisSectorID =
+                p.SectorID !== undefined &&
+                p.SectorID !== null
+                    ?
+                    String(p.SectorID)
+                    :
+                    "";
+
+
+            const subID =
+                p.SubSectorI !== undefined &&
+                p.SubSectorI !== null
+                    ?
+                    String(p.SubSectorI)
+                    :
+                    "";
+
+
+            const subName =
+                p.SubSector !== undefined &&
+                p.SubSector !== null
+                    ?
+                    String(p.SubSector)
+                    :
+                    "";
+
+
+
+            /* Filter only when a sector is selected */
+
+            if (
+                sectorID &&
+                thisSectorID !==
+                String(sectorID)
+            ) {
+
+                return;
+
+            }
+
+
+
+            if (
+                subID &&
+                subName
+            ) {
+
+                const exists =
+                    subSectors.some(
+
+                        x =>
+                            x.id ===
+                            subID
+
+                    );
+
+
+                if (!exists) {
+
+                    subSectors.push({
+
+                        id:
+                            subID,
+
+                        name:
+                            subName,
+
+                        sectorID:
+                            thisSectorID
+
+                    });
+
+                }
+
+            }
+
+        }
+
+    );
+
+
+
+    subSectors.sort(
+
+        (a, b) =>
+            a.name.localeCompare(
+                b.name
+            )
+
+    );
+
+
+
+    subSectors.forEach(
+
+        function (subSector) {
+
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+
+            option.value =
+                subSector.id;
+
+
+            option.textContent =
+                subSector.name;
+
+
+            select.appendChild(
+                option
+            );
+
+        }
+
+    );
+
+
+    console.log(
+        "Sub-Sector dropdown:",
+        subSectors.length
+    );
+
+}
+
+
+
+/* =========================================================
+   EVENT SETUP
+========================================================= */
+
+function setupEvents() {
+
+
+    /* =====================================================
+       SECTOR DROPDOWN
+    ====================================================== */
+
+    document
+        .getElementById(
+            "sectorSelect"
+        )
+        .addEventListener(
+
+            "change",
+
+            function () {
+
+                const sectorID =
+                    this.value;
+
+
+                /* All sectors */
+
+                if (!sectorID) {
+
+                    selectedSectorID =
+                        null;
+
+                    selectedSubSectorID =
+                        null;
+
+
+                    selectedSectorSource.clear();
+
+                    selectedSubSectorSource.clear();
+
+
+                    populateSubSectorDropdown();
+
+
+                    statusText(
+                        "All Areas"
+                    );
+
+
+                    showDefaultMap();
+
+
+                    return;
+
+                }
+
+
+                selectedSectorID =
+                    sectorID;
+
+                selectedSubSectorID =
+                    null;
+
+
+                /* Filter sub-sectors */
+
+                populateSubSectorDropdown(
+                    sectorID
+                );
+
+
+                /* Reset sub-sector dropdown */
+
+                document
+                    .getElementById(
+                        "subSectorSelect"
+                    )
+                    .value =
+                    "";
+
+
+                selectedSubSectorSource.clear();
+
+
+                /* Get sector */
+
+                const sector =
+                    getSectorByID(
+                        sectorID
+                    );
+
+
+                if (!sector) {
+
+                    return;
+
+                }
+
+
+                /* Highlight sector */
+
+                selectedSectorSource.clear();
+
+                selectedSectorSource.add(
+                    sector
+                );
+
+
+                statusText(
+
+                    "Sector: " +
+                    getProperty(
+                        sector,
+                        "Sector"
+                    )
+
+                );
+
+
+                /* Keep sector + sub-sector layers */
+
+                showSubSector();
+
+
+                zoomToFeature(
+                    sector
+                );
+
+            }
+
+        );
+
+
+
+    /* =====================================================
+       SUB-SECTOR DROPDOWN
+    ====================================================== */
+
+    document
+        .getElementById(
+            "subSectorSelect"
+        )
+        .addEventListener(
+
+            "change",
+
+            function () {
+
+                const subID =
+                    this.value;
+
+
+                /* All sub-sectors */
+
+                if (!subID) {
+
+                    selectedSubSectorID =
+                        null;
+
+
+                    selectedSubSectorSource.clear();
+
+
+                    statusText(
+                        selectedSectorID
+                            ?
+                            "Sector selected"
+                            :
+                            "All Areas"
+                    );
+
+
+                    return;
+
+                }
+
+
+                const subSector =
+                    getSubSectorByID(
+                        subID
+                    );
+
+
+                if (!subSector) {
+
+                    console.warn(
+                        "Sub-sector not found:",
+                        subID
+                    );
+
+                    return;
+
+                }
+
+
+                const subProperties =
+                    getFeatureProperties(
+                        subSector
+                    );
+
+
+                selectedSubSectorID =
+                    subID;
+
+
+                /* Parent sector */
+
+                const parentSectorID =
+                    getProperty(
+                        subSector,
+                        "SectorID"
+                    );
+
+
+                selectedSectorID =
+                    parentSectorID
+                        ?
+                        String(parentSectorID)
+                        :
+                        null;
+
+
+                /* Update Sector dropdown */
+
+                if (
+                    selectedSectorID
+                ) {
+
+                    document
+                        .getElementById(
+                            "sectorSelect"
+                        )
+                        .value =
+                        selectedSectorID;
+
+                }
+
+
+                /* Parent sector highlight */
+
+                selectedSectorSource.clear();
+
+
+                if (
+                    selectedSectorID
+                ) {
+
+                    const sector =
+                        getSectorByID(
+                            selectedSectorID
+                        );
+
+
+                    if (sector) {
+
+                        selectedSectorSource.add(
+                            sector
+                        );
+
+                    }
+
+                }
+
+
+                /* Selected sub-sector */
+
+                selectedSubSectorSource.clear();
+
+                selectedSubSectorSource.add(
+                    subSector
+                );
+
+
+                /* Keep both parent sector
+                   and sub-sector visible */
+
+                showSubSector();
+
+
+                /* Zoom */
+
+                zoomToFeature(
+                    subSector
+                );
+
+
+                /* Status */
+
+                statusText(
+
+                    "Sub-Sector: " +
+                    (
+                        subProperties.SubSector ||
+                        ""
+                    )
+
+                );
+
+            }
+
+        );
+
+
+
+    /* =====================================================
+       ASARTR
+    ====================================================== */
+
+    document
+        .getElementById(
+            "btnASARTR"
+        )
+        .addEventListener(
+
+            "click",
+
+            function () {
+
+                showASARTR();
+
+            }
+
+        );
+
+
+
+    /* =====================================================
+       SECTOR
+    ====================================================== */
+
+    document
+        .getElementById(
+            "btnSector"
+        )
+        .addEventListener(
+
+            "click",
+
+            function () {
+
+                showSector();
+
+            }
+
+        );
+
+
+
+    /* =====================================================
+       SUB-SECTOR
+    ====================================================== */
+
+    document
+        .getElementById(
+            "btnSubSector"
+        )
+        .addEventListener(
+
+            "click",
+
+            function () {
+
+                showSubSector();
+
+            }
+
+        );
+
+
+
+    /* =====================================================
+       ZOOM ALL
+    ====================================================== */
+
+    document
+        .getElementById(
+            "btnZoomAll"
+        )
+        .addEventListener(
+
+            "click",
+
+            function () {
+
+                zoomAll();
+
+            }
+
+        );
+
+
+
+    /* =====================================================
+       CLEAR ALL
+    ====================================================== */
+
+    document
+        .getElementById(
+            "btnClear"
+        )
+        .addEventListener(
+
+            "click",
+
+            function () {
+
+                clearSelection();
+
+            }
+
+        );
+
+}
+
+
+
+/* =========================================================
+   SECTOR MAP CLICK
+========================================================= */
+
+function sectorClicked(e) {
+
+    if (
+        !e ||
+        !e.shapes ||
+        e.shapes.length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const shape =
+        e.shapes[0];
+
+
+    const properties =
+        getFeatureProperties(
+            shape
+        );
+
+
+    const sectorID =
+        properties.SectorID !== undefined &&
+        properties.SectorID !== null
+            ?
+            String(properties.SectorID)
+            :
+            "";
+
+
+    if (!sectorID) {
+
+        console.warn(
+            "Clicked sector has no SectorID."
+        );
+
+        return;
+
+    }
+
+
+    selectedSectorID =
+        sectorID;
+
+
+    selectedSubSectorID =
+        null;
+
+
+    /* Sector dropdown */
+
+    document
+        .getElementById(
+            "sectorSelect"
+        )
+        .value =
+        sectorID;
+
+
+    /* Filter sub-sectors */
+
+    populateSubSectorDropdown(
+        sectorID
+    );
+
+
+    /* Reset sub-sector */
+
+    document
+        .getElementById(
+            "subSectorSelect"
+        )
+        .value =
+        "";
+
+
+    /* Highlight */
+
+    const realSector =
+        getSectorByID(
+            sectorID
+        );
+
+
+    selectedSectorSource.clear();
+
+
+    if (realSector) {
+
+        selectedSectorSource.add(
+            realSector
+        );
+
+    }
+
+
+    selectedSubSectorSource.clear();
+
+
+    /* Popup */
+
+    showPopup(
+
+        e.position,
+
+        properties,
+
+        "Sector"
+
+    );
+
+
+    statusText(
+
+        "Sector: " +
+        (
+            properties.Sector ||
+            ""
+        )
+
+    );
+
+
+    showSector();
+
+}
+
+
+
+/* =========================================================
+   SUB-SECTOR MAP CLICK
+========================================================= */
+
+function subSectorClicked(e) {
+
+    if (
+        !e ||
+        !e.shapes ||
+        e.shapes.length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const shape =
+        e.shapes[0];
+
+
+    const properties =
+        getFeatureProperties(
+            shape
+        );
+
+
+    const subSectorID =
+        properties.SubSectorI !== undefined &&
+        properties.SubSectorI !== null
+            ?
+            String(properties.SubSectorI)
+            :
+            "";
+
+
+    const sectorID =
+        properties.SectorID !== undefined &&
+        properties.SectorID !== null
+            ?
+            String(properties.SectorID)
+            :
+            "";
+
+
+    if (
+        !subSectorID
+    ) {
+
+        console.warn(
+            "Clicked sub-sector has no SubSectorI."
+        );
+
+        return;
+
+    }
+
+
+    selectedSubSectorID =
+        subSectorID;
+
+
+    selectedSectorID =
+        sectorID || null;
+
+
+
+    /* Sector dropdown */
+
+    if (sectorID) {
+
+        document
+            .getElementById(
+                "sectorSelect"
+            )
+            .value =
+            sectorID;
+
+    }
+
+
+    /* Populate only parent sector's
+       sub-sectors */
+
+    populateSubSectorDropdown(
+        sectorID
+    );
+
+
+    /* Select clicked sub-sector */
+
+    document
+        .getElementById(
+            "subSectorSelect"
+        )
+        .value =
+        subSectorID;
+
+
+
+    /* Parent sector */
+
+    selectedSectorSource.clear();
+
+
+    if (sectorID) {
+
+        const sector =
+            getSectorByID(
+                sectorID
+            );
+
+
+        if (sector) {
+
+            selectedSectorSource.add(
+                sector
+            );
+
+        }
+
+    }
+
+
+
+    /* Selected sub-sector */
+
+    selectedSubSectorSource.clear();
+
+    const realSubSector =
+        getSubSectorByID(
+            subSectorID
+        );
+
+
+    if (realSubSector) {
+
+        selectedSubSectorSource.add(
+            realSubSector
+        );
+
+    }
+
+    else {
+
+        selectedSubSectorSource.add(
+            shape
+        );
+
+    }
+
+
+
+    /* Popup */
+
+    showPopup(
+
+        e.position,
+
+        properties,
+
+        "Sub-Sector"
+
+    );
+
+
+    statusText(
+
+        "Sub-Sector: " +
+        (
+            properties.SubSector ||
+            ""
+        )
+
+    );
+
+
+    /* Show sector background + sub-sector */
+
+    showSubSector();
+
+}
+
+
+
+/* =========================================================
+   HOVER - SECTOR
+========================================================= */
+
+function sectorMouseMove(e) {
+
+    if (
+        !e ||
+        !e.shapes ||
+        e.shapes.length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const shape =
+        e.shapes[0];
+
+
+    hoverSource.clear();
+
+    hoverSource.add(
+        shape
+    );
+
+
+    map.getCanvasContainer()
+       .style.cursor =
+       "pointer";
+
+}
+
+
+
+/* =========================================================
+   HOVER - SUB-SECTOR
+========================================================= */
+
+function subSectorMouseMove(e) {
+
+    if (
+        !e ||
+        !e.shapes ||
+        e.shapes.length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const shape =
+        e.shapes[0];
+
+
+    hoverSource.clear();
+
+    hoverSource.add(
+        shape
+    );
+
+
+    map.getCanvasContainer()
+       .style.cursor =
+       "pointer";
+
+}
+
+
+
+/* =========================================================
+   CLEAR HOVER
+========================================================= */
+
+function clearHover() {
+
+    hoverSource.clear();
+
+
+    map.getCanvasContainer()
+       .style.cursor =
+       "grab";
+
+}
+
+
+
+/* =========================================================
+   GET PROPERTY
+========================================================= */
+
+function getProperty(
+    feature,
+    propertyName
+) {
+
+    const properties =
+        getFeatureProperties(
+            feature
+        );
+
+
+    return properties[propertyName];
+
+}
+
+
+
+/* =========================================================
+   GET SECTOR
+========================================================= */
+
+function getSectorByID(
+    sectorID
+) {
+
+    if (
+        !sectorData ||
+        !sectorData.features
+    ) {
+
+        return null;
+
+    }
+
+
+    return sectorData.features.find(
+
+        function (feature) {
+
+            const p =
+                feature.properties || {};
+
+
+            return (
+
+                p.SectorID !== undefined &&
+
+                String(
+                    p.SectorID
+                ) ===
+                String(
+                    sectorID
+                )
+
+            );
+
+        }
+
+    ) || null;
+
+}
+
+
+
+/* =========================================================
+   GET SUB-SECTOR
+========================================================= */
+
+function getSubSectorByID(
+    subSectorID
+) {
+
+    if (
+        !subSectorData ||
+        !subSectorData.features
+    ) {
+
+        return null;
+
+    }
+
+
+    return subSectorData.features.find(
+
+        function (feature) {
+
+            const p =
+                feature.properties || {};
+
+
+            return (
+
+                p.SubSectorI !== undefined &&
+
+                String(
+                    p.SubSectorI
+                ) ===
+                String(
+                    subSectorID
+                )
+
+            );
+
+        }
+
+    ) || null;
+
+}
+
+
+
+/* =========================================================
+   ZOOM FEATURE
+========================================================= */
+
+function zoomToFeature(
+    feature
+) {
+
+    if (!feature) {
+
+        return;
+
+    }
+
+
+    try {
+
+        const bounds =
+            atlas.data.BoundingBox.fromData(
+                feature
+            );
+
+
+        map.setCamera({
+
+            bounds:
+                bounds,
+
+            padding:
+                100
+
+        });
+
+    }
+
+    catch (error) {
+
+        console.warn(
+            "Could not zoom to feature:",
+            error
+        );
+
+    }
+
+}
+
+
+
+/* =========================================================
+   ZOOM ALL
+========================================================= */
+
+function zoomAll() {
+
+    if (!asartrData) {
+
+        return;
+
+    }
+
+
+    try {
+
+        const bounds =
+            atlas.data.BoundingBox.fromData(
+                asartrData
+            );
+
+
+        map.setCamera({
+
+            bounds:
+                bounds,
+
+            padding:
+                50
+
+        });
+
+    }
+
+    catch (error) {
+
+        console.warn(
+            "Could not zoom to ASARTR:",
+            error
+        );
+
+    }
+
+}
+
+
+
+/* =========================================================
+   CLEAR SELECTION
+========================================================= */
+
+function clearSelection() {
+
+    selectedSectorID =
+        null;
+
+
+    selectedSubSectorID =
+        null;
+
+
+    /* Reset Sector */
+
+    document
+        .getElementById(
+            "sectorSelect"
+        )
+        .value =
+        "";
+
+
+    /* Show ALL sub-sectors again */
+
+    populateSubSectorDropdown();
+
+
+    document
+        .getElementById(
+            "subSectorSelect"
+        )
+        .value =
+        "";
+
+
+    /* Clear highlights */
+
+    selectedSectorSource.clear();
+
+    selectedSubSectorSource.clear();
+
+    hoverSource.clear();
+
+
+    /* Reset map */
+
+    showDefaultMap();
+
+
+    /* Zoom */
+
+    zoomAll();
+
+
+    /* Status */
+
+    statusText(
+        "All Areas"
+    );
+
+
+    /* Close popup */
+
+    if (popup) {
+
+        popup.close();
+
+    }
+
+
+    console.log(
+        "Selection cleared"
+    );
+
+}
+
+
+
+/* =========================================================
+   DEFAULT MAP
+========================================================= */
+
+function showDefaultMap() {
+
+    asartrLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    sectorFillLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    sectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    subSectorFillLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    subSectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSectorLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSubSectorLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSubSectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    hoverLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+}
+
+
+
+/* =========================================================
+   SHOW ASARTR
+========================================================= */
+
+function showASARTR() {
+
+    asartrLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    sectorFillLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    sectorBorderLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    subSectorFillLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    subSectorBorderLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    selectedSectorLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    selectedSectorBorderLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    selectedSubSectorLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    selectedSubSectorBorderLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+}
+
+
+
+/* =========================================================
+   SHOW SECTOR
+========================================================= */
+
+function showSector() {
+
+    asartrLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    sectorFillLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    sectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    subSectorFillLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    subSectorBorderLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    selectedSectorLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSubSectorLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+
+    selectedSubSectorBorderLayer.setOptions({
+
+        visible:
+            false
+
+    });
+
+}
+
+
+
+/* =========================================================
+   SHOW SUB-SECTOR
+
+   IMPORTANT:
+   Parent Sector remains visible.
+========================================================= */
+
+function showSubSector() {
+
+    asartrLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    /* Sector background */
+
+    sectorFillLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    sectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    /* Sub-sector */
+
+    subSectorFillLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    subSectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    /* Selected parent sector */
+
+    selectedSectorLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    /* Selected sub-sector */
+
+    selectedSubSectorLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+
+    selectedSubSectorBorderLayer.setOptions({
+
+        visible:
+            true
+
+    });
+
+}
+
+
+
+/* =========================================================
+   POPUP
+========================================================= */
+
+function showPopup(
+    position,
+    properties,
+    type
+) {
+
+    let html = `
+
+        <div class="popup-content">
+
+            <div class="popup-title">
+                ${escapeHTML(type)}
+            </div>
+
+    `;
+
+
+    Object.keys(
+        properties || {}
+    ).forEach(
+
+        function (key) {
+
+            const value =
+                properties[key];
+
+
+            if (
+                value === null ||
+                value === undefined ||
+                value === ""
+            ) {
+
+                return;
+
+            }
+
+
+            html += `
+
+                <div class="popup-row">
+
+                    <span class="popup-label">
+                        ${escapeHTML(key)}:
+                    </span>
+
+                    ${escapeHTML(
+                        String(value)
+                    )}
+
+                </div>
+
+            `;
+
+        }
+
+    );
+
+
+    html += `
+        </div>
+    `;
+
+
+    popup.setOptions({
+
+        position:
+            position,
+
+        content:
+            html
+
+    });
+
+
+    popup.open(
+        map
+    );
+
+}
+
+
+
+/* =========================================================
+   ESCAPE HTML
+========================================================= */
+
+function escapeHTML(
+    value
+) {
+
+    return String(value)
+
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+
+        .replace(
+            /</g,
+            "&lt;"
+        )
+
+        .replace(
+            />/g,
+            "&gt;"
+        )
+
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
+
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function statusText(
+    text
+) {
+
+    document
+        .getElementById(
+            "status"
+        )
+        .textContent =
+        text;
+
+}
+
+
+</script>
+
+
+</body>
+
+</html>
