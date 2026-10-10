@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ASARTR Azure Maps Dashboard</title>
+<link rel="stylesheet" href="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.css" />
+<script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js"></script>
+<style>
+*{box-sizing:border-box}html,body,#map{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}#map{position:absolute;inset:0}
+#panel{position:absolute;z-index:10;top:14px;left:14px;right:14px;background:rgba(255,255,255,.97);padding:12px 14px;border-radius:10px;box-shadow:0 2px 12px #0003;display:flex;flex-wrap:wrap;align-items:end;gap:10px;max-width:1300px}
+.group{display:flex;flex-direction:column;gap:4px}label{font-size:12px;font-weight:700;color:#333}select,button{height:38px;border:1px solid #aaa;border-radius:5px;background:#fff;padding:0 10px;font-size:14px}select{min-width:210px;max-width:270px}button{cursor:pointer}button:hover{background:#eee}.toggles{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:0 5px 8px}.toggles label{display:flex;align-items:center;gap:5px;font-weight:500;font-size:13px}.toggles input{margin:0}#status{font-size:13px;color:#333;min-width:150px;padding:0 4px 10px}.popup{max-width:360px;max-height:300px;overflow:auto;font:13px Arial;padding:5px}.popup h3{margin:0 0 8px;border-bottom:1px solid #ddd;padding-bottom:6px}.popup-row{margin:5px 0;overflow-wrap:anywhere}.popup-row b{margin-right:5px}
+@media(max-width:700px){#panel{left:8px;right:8px;top:8px;padding:10px}select{min-width:170px}#status{padding:2px}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <div class="group"><label for="sectorSelect">Sector</label><select id="sectorSelect"><option value="">-- All Sectors --</option></select></div>
+  <div class="group"><label for="subSectorSelect">Sub-Sector</label><select id="subSectorSelect"><option value="">-- All Sub-Sectors --</option></select></div>
+  <div class="toggles" aria-label="Map layers">
+    <label><input type="checkbox" id="toggleBoundary" checked> ASARTR Boundary</label>
+    <label><input type="checkbox" id="toggleRiver" checked> River</label>
+    <label><input type="checkbox" id="toggleRoad" checked> Road</label>
+    <label><input type="checkbox" id="toggleSector" checked> Sector</label>
+    <label><input type="checkbox" id="toggleSubSector" checked> Sub-Sector</label>
+  </div>
+  <button id="zoomAll">Zoom All</button><button id="clearAll">Clear All</button>
+  <div id="status">Loading data…</div>
+</div>
+<script>
+// IMPORTANT: Replace this placeholder with your Azure Maps subscription key.
+// Do not publish a real key in a public repository; restrict it by allowed origins.
+const AZURE_MAPS_KEY = "YOUR_KEY";
+
+// These paths match the five GeoJSON files uploaded to the repository root.
+const URLS = {
+  boundary: "ASARTR_Boundary.geojson",
+  river: "River.geojson",
+  road: "Road.geojson",
+  sector: "Sector.geojson",
+  subSector: "Sub_Sector.geojson"
+};
+
+const state = { data: {}, sources: {}, layers: {}, selectedSector: "", selectedSubSector: "" };
+const map = new atlas.Map("map", {
+  center: [102.65, 4.25], zoom: 8, view: "Auto",
+  authOptions: { authType: "subscriptionKey", subscriptionKey: AZURE_MAPS_KEY }
+});
+const statusEl = document.getElementById("status");
+const popup = new atlas.Popup({ pixelOffset: [0, -12], closeButton: true });
+
+async function loadGeoJSON(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+  const data = await response.json();
+  if (!data || data.type !== "FeatureCollection" || !Array.isArray(data.features)) {
+    throw new Error(`${url} is not a GeoJSON FeatureCollection.`);
+  }
+  return data;
+}
+function esc(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+function makeSource(id, data) {
+  const source = new atlas.source.DataSource(id);
+  map.sources.add(source);
+  source.add(data.features);
+  return source;
+}
+function addPopupEvents(layer, title) {
+  map.events.add("click", layer, e => {
+    if (!e.shapes || !e.shapes.length) return;
+    const shape = e.shapes[0];
+    const props = typeof shape.getProperties === "function" ? shape.getProperties() : (shape.properties || {});
+    let rows = Object.entries(props).filter(([,v]) => v !== null && v !== undefined && v !== "")
+      .map(([k,v]) => `<div class="popup-row"><b>${esc(k)}:</b>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</div>`).join("");
+    popup.setOptions({ position: e.position, content: `<div class="popup"><h3>${esc(title)}</h3>${rows || "No attributes available."}</div>` });
+    popup.open(map);
+  });
+}
+function createLayers() {
+  const s = state.sources;
+  // Polygon fills first; outlines and linear features are drawn above them.
+  state.layers.sectorFill = new atlas.layer.PolygonLayer(s.sector, "sectorFill", { fillColor: "rgba(90,150,110,0.22)" });
+  state.layers.subSectorFill = new atlas.layer.PolygonLayer(s.subSector, "subSectorFill", { fillColor: "rgba(90,160,210,0.18)" });
+  state.layers.sectorLine = new atlas.layer.LineLayer(s.sector, "sectorLine", { strokeColor: "#26734D", strokeWidth: 2 });
+  state.layers.subSectorLine = new atlas.layer.LineLayer(s.subSector, "subSectorLine", { strokeColor: "#FFFFFF", strokeWidth: 1.3 });
+  state.layers.boundary = new atlas.layer.LineLayer(s.boundary, "boundaryLine", { strokeColor: "#111111", strokeWidth: 3 });
+  state.layers.river = new atlas.layer.LineLayer(s.river, "riverLine", { strokeColor: "#1677D2", strokeWidth: 2 });
+  state.layers.road = new atlas.layer.LineLayer(s.road, "roadLine", { strokeColor: "#D46A28", strokeWidth: 1.6 });
+  map.layers.add([state.layers.sectorFill, state.layers.subSectorFill, state.layers.sectorLine, state.layers.subSectorLine, state.layers.river, state.layers.road, state.layers.boundary]);
+  addPopupEvents(state.layers.boundary, "ASARTR Boundary");
+  addPopupEvents(state.layers.river, "River");
+  addPopupEvents(state.layers.road, "Road");
+  addPopupEvents(state.layers.sectorFill, "Sector");
+  addPopupEvents(state.layers.subSectorFill, "Sub-Sector");
+  // Keep polygons selectable above other layers.
+  [state.layers.sectorFill, state.layers.subSectorFill].forEach(layer => {
+    map.events.add("mousemove", layer, () => { map.getCanvasContainer().style.cursor = "pointer"; });
+    map.events.add("mouseleave", layer, () => { map.getCanvasContainer().style.cursor = "grab"; });
+  });
+}
+function featureProps(feature) { return feature && feature.properties ? feature.properties : {}; }
+function populateSectorOptions() {
+  const select = document.getElementById("sectorSelect");
+  select.innerHTML = '<option value="">-- All Sectors --</option>';
+  const unique = new Map();
+  for (const f of (state.data.sector.features || [])) {
+    const p = featureProps(f), id = p.SectorID == null ? "" : String(p.SectorID), name = p.Sector == null ? "" : String(p.Sector);
+    if (id && name && !unique.has(id)) unique.set(id, name);
+  }
+  [...unique.entries()].sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id,name]) => {
+    const option = document.createElement("option"); option.value = id; option.textContent = name; select.appendChild(option);
+  });
+}
+function populateSubSectorOptions(sectorId = "") {
+  const select = document.getElementById("subSectorSelect");
+  select.innerHTML = '<option value="">-- All Sub-Sectors --</option>';
+  const unique = new Map();
+  for (const f of (state.data.subSector.features || [])) {
+    const p = featureProps(f), parent = p.SectorID == null ? "" : String(p.SectorID);
+    const id = p.SubSectorI == null ? "" : String(p.SubSectorI), name = p.SubSector == null ? "" : String(p.SubSector);
+    if (sectorId && parent !== String(sectorId)) continue;
+    if (id && name && !unique.has(id)) unique.set(id, name);
+  }
+  [...unique.entries()].sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id,name]) => {
+    const option = document.createElement("option"); option.value = id; option.textContent = name; select.appendChild(option);
+  });
+}
+function zoomToData(data) {
+  if (!data || !data.features || !data.features.length) return;
+  try { map.setCamera({ bounds: atlas.data.BoundingBox.fromData(data), padding: 60 }); }
+  catch (e) { console.warn("Unable to zoom to data", e); }
+}
+function applyVisibility() {
+  const checked = id => document.getElementById(id).checked;
+  state.layers.boundary.setOptions({ visible: checked("toggleBoundary") });
+  state.layers.river.setOptions({ visible: checked("toggleRiver") });
+  state.layers.road.setOptions({ visible: checked("toggleRoad") });
+  state.layers.sectorFill.setOptions({ visible: checked("toggleSector") });
+  state.layers.sectorLine.setOptions({ visible: checked("toggleSector") });
+  state.layers.subSectorFill.setOptions({ visible: checked("toggleSubSector") });
+  state.layers.subSectorLine.setOptions({ visible: checked("toggleSubSector") });
+}
+function selectFeatureByProperty(data, key, value) {
+  return (data.features || []).find(f => String(featureProps(f)[key] ?? "") === String(value)) || null;
+}
+function handleSectorChange() {
+  state.selectedSector = document.getElementById("sectorSelect").value;
+  state.selectedSubSector = "";
+  populateSubSectorOptions(state.selectedSector);
+  document.getElementById("subSectorSelect").value = "";
+  if (!state.selectedSector) { statusEl.textContent = "All areas"; zoomToData(state.data.boundary); return; }
+  const f = selectFeatureByProperty(state.data.sector, "SectorID", state.selectedSector);
+  statusEl.textContent = `Sector: ${featureProps(f).Sector || state.selectedSector}`;
+  if (f) zoomToData({ type: "FeatureCollection", features: [f] });
+}
+function handleSubSectorChange() {
+  state.selectedSubSector = document.getElementById("subSectorSelect").value;
+  if (!state.selectedSubSector) { statusEl.textContent = state.selectedSector ? "Sector selected" : "All areas"; return; }
+  const f = selectFeatureByProperty(state.data.subSector, "SubSectorI", state.selectedSubSector);
+  if (!f) return;
+  const p = featureProps(f);
+  if (p.SectorID != null) {
+    state.selectedSector = String(p.SectorID);
+    document.getElementById("sectorSelect").value = state.selectedSector;
+    populateSubSectorOptions(state.selectedSector);
+    document.getElementById("subSectorSelect").value = state.selectedSubSector;
+  }
+  statusEl.textContent = `Sub-Sector: ${p.SubSector || state.selectedSubSector}`;
+  zoomToData({ type: "FeatureCollection", features: [f] });
+}
+map.events.add("ready", async () => {
+  try {
+    statusEl.textContent = "Loading 5 GeoJSON files…";
+    const entries = await Promise.all(Object.entries(URLS).map(async ([key,url]) => [key, await loadGeoJSON(url)]));
+    for (const [key,data] of entries) state.data[key] = data;
+    state.sources.boundary = makeSource("boundarySource", state.data.boundary);
+    state.sources.river = makeSource("riverSource", state.data.river);
+    state.sources.road = makeSource("roadSource", state.data.road);
+    state.sources.sector = makeSource("sectorSource", state.data.sector);
+    state.sources.subSector = makeSource("subSectorSource", state.data.subSector);
+    createLayers();
+    populateSectorOptions(); populateSubSectorOptions(); applyVisibility();
+    document.getElementById("sectorSelect").addEventListener("change", handleSectorChange);
+    document.getElementById("subSectorSelect").addEventListener("change", handleSubSectorChange);
+    ["toggleBoundary","toggleRiver","toggleRoad","toggleSector","toggleSubSector"].forEach(id => document.getElementById(id).addEventListener("change", applyVisibility));
+    document.getElementById("zoomAll").addEventListener("click", () => zoomToData(state.data.boundary));
+    document.getElementById("clearAll").addEventListener("click", () => {
+      state.selectedSector = ""; state.selectedSubSector = "";
+      document.getElementById("sectorSelect").value = ""; populateSubSectorOptions(); document.getElementById("subSectorSelect").value = "";
+      popup.close(); statusEl.textContent = "All areas"; zoomToData(state.data.boundary);
+    });
+    statusEl.textContent = `Ready — ${Object.values(state.data).reduce((n,d)=>n+d.features.length,0).toLocaleString()} features across 5 layers`;
+    zoomToData(state.data.boundary);
+  } catch (error) {
+    console.error("GeoJSON loading failed:", error);
+    statusEl.textContent = "Data loading error — check filenames and Azure Maps key";
+    alert(`Could not load GeoJSON data. Check that the five files are next to index.html and valid GeoJSON. Details: ${error.message}`);
+  }
+});
+</script>
+</body>
+</html>
